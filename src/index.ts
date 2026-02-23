@@ -2422,7 +2422,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       let generatedRule = tmpl.template_rule;
       for (const [key, value] of Object.entries(parameters)) {
-        generatedRule = generatedRule.replace(new RegExp(`\\{${key}\\}`, "g"), String(value));
+        const placeholder = `{${key}}`;
+        generatedRule = generatedRule.split(placeholder).join(String(value));
       }
       const result = {
         template_id: templateId,
