@@ -1,0 +1,29 @@
+{
+  "name": "business-logic-mcp",
+  "version": "1.0.0",
+  "description": "Logic aid for software development - An MCP server that exposes business rules, state machines, field semantics, and known footguns to LLMs during code generation.",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "business-logic-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "npx ts-node --esm src/index.ts"
+  },
+  "keywords": [
+    "mcp",
+    "business-logic",
+    "llm",
+    "ai"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "typescript": "^5.7.3"
+  }
+}
