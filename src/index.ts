@@ -2339,7 +2339,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       if (includeRulesets) {
         bundle.rulesets = scopeEntity
-          ? Object.fromEntries(Object.entries(RULESETS).filter(([, rs]) => rs.tags.includes((scopeEntity ?? "").toLowerCase())))
+          ? Object.fromEntries(
+              Object.entries(RULESETS).filter(([, rs]) =>
+                rs.tags.some(
+                  (tag) => tag.toLowerCase() === (scopeEntity ?? "").toLowerCase(),
+                ),
+              ),
+            )
           : RULESETS;
       }
       if (includePermissions) {
