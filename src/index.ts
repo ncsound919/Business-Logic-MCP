@@ -2309,7 +2309,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ? { [scopeEntity]: BUSINESS_LOGIC.entities[scopeEntity] ?? null }
           : BUSINESS_LOGIC.entities,
         state_machines: scopeEntity
-          ? Object.fromEntries(Object.entries(BUSINESS_LOGIC.state_machines).filter(([k]) => k.startsWith(scopeEntity ?? "")))
+          ? Object.fromEntries(
+              Object.entries(BUSINESS_LOGIC.state_machines).filter(([k]) =>
+                k.startsWith((scopeEntity ?? "") + "."),
+              ),
+            )
           : BUSINESS_LOGIC.state_machines,
         global_footguns: BUSINESS_LOGIC.global_footguns,
       };
