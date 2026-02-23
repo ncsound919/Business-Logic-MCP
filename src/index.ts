@@ -894,6 +894,13 @@ function rowMatchesInputs(
     const inputVal = inputs[condField];
     if (condValue !== null && typeof condValue === "object" && "op" in condValue) {
       const { op, value } = condValue as DecisionTableConditionValue;
+      // Explicit check: treat missing/null input as a non-match for all operators
+      if (inputVal === undefined || inputVal === null) {
+        console.warn(
+          `rowMatchesInputs: missing input value for field "${condField}" with op "${op}"`
+        );
+        return false;
+      }
       if (op === ">=" || op === "<=" || op === ">" || op === "<") {
         const left = Number(inputVal);
         const right = Number(value);
@@ -938,7 +945,7 @@ const RULE_TEMPLATES: Record<string, RuleTemplate> = {
       { name: "message", type: "string", description: "Error message when rule fails", example: "Order total exceeds maximum allowed amount." },
     ],
     template_rule: "if {field} {operator} {threshold} then FAIL: {message}",
-    example_output: "if order.total_amount >= 10000 then FAIL: Order total exceeds maximum allowed amount.",
+    example_output: "if order.total_amount >= 10000 then FAIL: Order total exceeds $100 maximum allowed amount.",
   },
   status_transition_guard: {
     id: "status_transition_guard",
@@ -1607,7 +1614,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "register_shadow_test",
       description:
-        "Registers a shadow test that tracks side-by-side executions of two tools (baseline vs candidate) for comparison. Returns the test ID. Use this to safely evaluate new logic against production behavior.",
+        "Registers a shadow test configuration for side-by-side comparison of a baseline and candidate tool. This is a registration-only API — it stores the test metadata for external test runners and the get_monitoring_stats tool to consume. The actual comparison execution must be performed by the caller by invoking both tools independently and comparing their outputs.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1722,16 +1729,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (name) {
     // -------------------------------------------------------------------------
     case "list_entities": {
+      const t0 = Date.now();
       const result = Object.entries(BUSINESS_LOGIC.entities).map(([entity, def]) => ({
         entity,
         description: def.description,
         fields: Object.keys(def.fields),
       }));
+      logExecution("list_entities", args, `${result.length} entities`, Date.now() - t0);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     }
 
     // -------------------------------------------------------------------------
     case "get_entity_rules": {
+      const t0 = Date.now();
       const entity = args.entity as string | undefined;
       if (!entity) {
         return { content: [{ type: "text", text: "Missing required argument: 'entity'." }], isError: true };
@@ -1744,11 +1754,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           isError: true,
         };
       }
+      logExecution("get_entity_rules", args, entity, Date.now() - t0);
       return { content: [{ type: "text", text: JSON.stringify({ entity, ...def }, null, 2) }] };
     }
 
     // -------------------------------------------------------------------------
     case "get_state_transitions": {
+      const t0 = Date.now();
       const entity_field = args.entity_field as string | undefined;
       if (!entity_field) {
         return { content: [{ type: "text", text: "Missing required argument: 'entity_field'." }], isError: true };
@@ -1765,6 +1777,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const transitions = current_state
         ? sm.transitions.filter((t) => t.from === current_state)
         : sm.transitions;
+      logExecution("get_state_transitions", args, `${transitions.length} transitions`, Date.now() - t0);
       return {
         content: [
           {
@@ -1777,6 +1790,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // -------------------------------------------------------------------------
     case "get_field_context": {
+      const t0 = Date.now();
       const entity = args.entity as string | undefined;
       const field = args.field as string | undefined;
       if (!entity || !field) {
@@ -1799,6 +1813,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           isError: true,
         };
       }
+      logExecution("get_field_context", args, `${entity}.${field}`, Date.now() - t0);
       return {
         content: [{ type: "text", text: JSON.stringify({ entity, field, ...fieldDef }, null, 2) }],
       };
@@ -1806,15 +1821,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // -------------------------------------------------------------------------
     case "list_operations": {
+      const t0 = Date.now();
       const ops = Object.entries(BUSINESS_LOGIC.cross_system_effects).map(([key, val]) => ({
         operation: key,
         description: val.description,
       }));
+      logExecution("list_operations", args, `${ops.length} operations`, Date.now() - t0);
       return { content: [{ type: "text", text: JSON.stringify(ops, null, 2) }] };
     }
 
     // -------------------------------------------------------------------------
     case "get_cross_system_effects": {
+      const t0 = Date.now();
       const operation = args.operation as string | undefined;
       if (!operation) {
         return { content: [{ type: "text", text: "Missing required argument: 'operation'." }], isError: true };
@@ -1832,6 +1850,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           isError: true,
         };
       }
+      logExecution("get_cross_system_effects", args, operation, Date.now() - t0);
       return {
         content: [{ type: "text", text: JSON.stringify({ operation, ...effect }, null, 2) }],
       };
@@ -1839,12 +1858,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // -------------------------------------------------------------------------
     case "get_footguns": {
+      const t0 = Date.now();
       const entity = args.entity as string | undefined;
       if (entity) {
         const def = BUSINESS_LOGIC.entities[entity];
         if (!def) {
           return { content: [{ type: "text", text: `Entity '${entity}' not found.` }], isError: true };
         }
+        logExecution("get_footguns", args, `${entity} + global`, Date.now() - t0);
         return {
           content: [
             {
@@ -1862,6 +1883,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ],
         };
       }
+      logExecution("get_footguns", args, "global only", Date.now() - t0);
       return {
         content: [
           {
@@ -2145,7 +2167,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: "Missing required arguments for audit event." }], isError: true };
       }
       const entry: AuditLogEntry = {
-        id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
         timestamp: new Date().toISOString(),
         actor_id: actorId,
         role,
@@ -2214,6 +2236,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // FEATURE 7: Production Debugging
     // =========================================================================
     case "get_execution_log": {
+      // NOTE: get_execution_log intentionally does NOT call logExecution() to avoid
+      // polluting the execution log with introspection queries, keeping it focused
+      // on business logic tool invocations.
       const filterTool = args.tool as string | undefined;
       const limit = Math.min(Number(args.limit ?? 20), 100);
       let entries = [...EXECUTION_LOG].reverse();
@@ -2265,6 +2290,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // -------------------------------------------------------------------------
     case "get_monitoring_stats": {
+      const t0 = Date.now();
       const uptimeMs = Date.now() - SERVER_START_TIME;
       const toolCounts: Record<string, number> = {};
       for (const entry of EXECUTION_LOG) {
@@ -2283,6 +2309,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         avg_tool_duration_ms: avgDuration,
         tool_invocation_counts: toolCounts,
       };
+      logExecution("get_monitoring_stats", args, "stats returned", Date.now() - t0);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     }
 
