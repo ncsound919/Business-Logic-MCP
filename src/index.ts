@@ -2310,7 +2310,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
       if (includeDecisionTables) {
         bundle.decision_tables = scopeEntity
-          ? Object.fromEntries(Object.entries(DECISION_TABLES).filter(([, dt]) => dt.description.toLowerCase().includes((scopeEntity ?? "").toLowerCase())))
+          ? Object.fromEntries(
+              Object.entries(DECISION_TABLES).filter(([, dt]) => {
+                const normalizedScope = (scopeEntity ?? "").toLowerCase();
+                const entity = (dt as any).entity as string | undefined;
+                const tags = (dt as any).tags as string[] | undefined;
+
+                // Prefer explicit entity match when available
+                if (entity && entity.toLowerCase() === normalizedScope) {
+                  return true;
+                }
+
+                // Next, prefer explicit tag match when available
+                if (Array.isArray(tags)) {
+                  const lowerTags = tags.map((t) => t.toLowerCase());
+                  if (lowerTags.includes(normalizedScope)) {
+                    return true;
+                  }
+                }
+
+                // Fallback to legacy description substring matching for backward compatibility
+                return dt.description
+                  .toLowerCase()
+                  .includes(normalizedScope);
+              })
+            )
           : DECISION_TABLES;
       }
       if (includeRulesets) {
