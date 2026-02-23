@@ -2110,9 +2110,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
       const explicitlyDenied = entityPerms.denied_actions.includes(action);
+      const isReadAction =
+        action === "read" ||
+        action === "read_one" ||
+        action === "read_many" ||
+        action === "read_all";
       const explicitlyAllowed =
         entityPerms.allowed_actions.includes(action) ||
-        (entityPerms.allowed_actions.includes("read_any") && action.startsWith("read"));
+        (entityPerms.allowed_actions.includes("read_any") && isReadAction);
       const result = {
         role,
         entity,
