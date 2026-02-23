@@ -894,11 +894,24 @@ function rowMatchesInputs(
     const inputVal = inputs[condField];
     if (condValue !== null && typeof condValue === "object" && "op" in condValue) {
       const { op, value } = condValue as DecisionTableConditionValue;
-      if (op === ">=" && !(Number(inputVal) >= Number(value))) return false;
-      if (op === "<=" && !(Number(inputVal) <= Number(value))) return false;
-      if (op === ">" && !(Number(inputVal) > Number(value))) return false;
-      if (op === "<" && !(Number(inputVal) < Number(value))) return false;
-      if (op === "!=" && !(inputVal !== value)) return false;
+      if (op === ">=" || op === "<=" || op === ">" || op === "<") {
+        const left = Number(inputVal);
+        const right = Number(value);
+        if (Number.isNaN(left) || Number.isNaN(right)) {
+          console.warn(
+            `rowMatchesInputs: non-numeric value for numeric comparison on field "${condField}" with op "${op}": inputVal=${String(
+              inputVal
+            )}, conditionValue=${String(value)}`
+          );
+          return false;
+        }
+        if (op === ">=" && !(left >= right)) return false;
+        if (op === "<=" && !(left <= right)) return false;
+        if (op === ">" && !(left > right)) return false;
+        if (op === "<" && !(left < right)) return false;
+      } else if (op === "!=" && !(inputVal !== value)) {
+        return false;
+      }
     } else if (inputVal !== condValue) {
       return false;
     }
