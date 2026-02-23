@@ -5,11 +5,19 @@
  * field semantics, and known footguns to LLMs during code generation.
  *
  * Usage:
- *   npx ts-node business-logic-mcp.ts
- *   or compile: npx tsc business-logic-mcp.ts && node business-logic-mcp.js
+ *   # Using the installed CLI (recommended)
+ *   npx business-logic-mcp
+ *
+ *   # From source with ts-node
+ *   npx ts-node src/index.ts
+ *
+ *   # Or compile then run the built JS
+ *   npx tsc && node dist/index.js
  *
  * Add to your MCP client config:
- *   { "command": "node", "args": ["path/to/business-logic-mcp.js"] }
+ *   { "command": "business-logic-mcp", "args": [] }
+ *   # or, if pointing directly at the compiled file:
+ *   { "command": "node", "args": ["path/to/dist/index.js"] }
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
