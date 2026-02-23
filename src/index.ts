@@ -1162,7 +1162,7 @@ interface MicroflowDef {
 
 // --- Feature 2: Decision Tables (DMN) ---
 interface DecisionTableConditionValue {
-  op: string;
+  op: ">=" | "<=" | ">" | "<" | "!=";
   value: unknown;
 }
 
