@@ -7,10 +7,13 @@
   "bin": {
     "business-logic-mcp": "dist/index.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "npx ts-node --esm src/index.ts"
+    "dev": "ts-node --esm src/index.ts"
   },
   "keywords": [
     "mcp",
@@ -25,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   }
 }

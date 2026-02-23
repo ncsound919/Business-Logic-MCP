@@ -499,7 +499,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 // --- Handle Tool Calls ---
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+  const { name, arguments: rawArgs } = request.params;
+  const args = (rawArgs ?? {}) as Record<string, unknown>;
 
   switch (name) {
     // -------------------------------------------------------------------------
@@ -514,12 +515,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // -------------------------------------------------------------------------
     case "get_entity_rules": {
-      const entity = (args as { entity: string }).entity;
+      const entity = args.entity as string | undefined;
+      if (!entity) {
+        return { content: [{ type: "text", text: "Missing required argument: 'entity'." }], isError: true };
+      }
       const def = BUSINESS_LOGIC.entities[entity];
       if (!def) {
         const available = Object.keys(BUSINESS_LOGIC.entities).join(", ");
         return {
           content: [{ type: "text", text: `Entity '${entity}' not found. Available: ${available}` }],
+          isError: true,
         };
       }
       return { content: [{ type: "text", text: JSON.stringify({ entity, ...def }, null, 2) }] };
@@ -527,15 +532,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // -------------------------------------------------------------------------
     case "get_state_transitions": {
-      const { entity_field, current_state } = args as {
-        entity_field: string;
-        current_state?: string;
-      };
+      const entity_field = args.entity_field as string | undefined;
+      if (!entity_field) {
+        return { content: [{ type: "text", text: "Missing required argument: 'entity_field'." }], isError: true };
+      }
+      const current_state = args.current_state as string | undefined;
       const sm = BUSINESS_LOGIC.state_machines[entity_field];
       if (!sm) {
         const available = Object.keys(BUSINESS_LOGIC.state_machines).join(", ");
         return {
           content: [{ type: "text", text: `State machine '${entity_field}' not found. Available: ${available}` }],
+          isError: true,
         };
       }
       const transitions = current_state
@@ -553,10 +560,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // -------------------------------------------------------------------------
     case "get_field_context": {
-      const { entity, field } = args as { entity: string; field: string };
+      const entity = args.entity as string | undefined;
+      const field = args.field as string | undefined;
+      if (!entity || !field) {
+        return { content: [{ type: "text", text: "Missing required arguments: 'entity' and 'field'." }], isError: true };
+      }
       const def = BUSINESS_LOGIC.entities[entity];
       if (!def) {
-        return { content: [{ type: "text", text: `Entity '${entity}' not found.` }] };
+        return { content: [{ type: "text", text: `Entity '${entity}' not found.` }], isError: true };
       }
       const fieldDef = def.fields[field];
       if (!fieldDef) {
@@ -568,6 +579,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               text: `Field '${field}' not found on '${entity}'. Available fields: ${available}`,
             },
           ],
+          isError: true,
         };
       }
       return {
@@ -586,7 +598,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // -------------------------------------------------------------------------
     case "get_cross_system_effects": {
-      const { operation } = args as { operation: string };
+      const operation = args.operation as string | undefined;
+      if (!operation) {
+        return { content: [{ type: "text", text: "Missing required argument: 'operation'." }], isError: true };
+      }
       const effect = BUSINESS_LOGIC.cross_system_effects[operation];
       if (!effect) {
         const available = Object.keys(BUSINESS_LOGIC.cross_system_effects).join(", ");
@@ -597,19 +612,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               text: `Operation '${operation}' not found. Available: ${available}`,
             },
           ],
+          isError: true,
         };
       }
       return {
-        content: [{ type: "text", text: JSON.stringify({ operation, ...effect }, null, 2) }] };
+        content: [{ type: "text", text: JSON.stringify({ operation, ...effect }, null, 2) }],
+      };
     }
 
     // -------------------------------------------------------------------------
     case "get_footguns": {
-      const { entity } = args as { entity?: string };
+      const entity = args.entity as string | undefined;
       if (entity) {
         const def = BUSINESS_LOGIC.entities[entity];
         if (!def) {
-          return { content: [{ type: "text", text: `Entity '${entity}' not found.` }] };
+          return { content: [{ type: "text", text: `Entity '${entity}' not found.` }], isError: true };
         }
         return {
           content: [
@@ -640,7 +657,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // -------------------------------------------------------------------------
     default:
-      return { content: [{ type: "text", text: `Unknown tool: ${name}` }] };
+      return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
 });
 
