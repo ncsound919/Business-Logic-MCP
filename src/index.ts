@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
  * Business Logic MCP Server
  * A single-file MCP server that exposes business rules, state machines,
@@ -26,10 +26,53 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { pathToFileURL } from "node:url";
+import { loadStores } from "./store.js";
+import {
+  checkPlanFootguns,
+  entityContract,
+  findTransition,
+  generateTransitionGuard,
+  schemaForEntity,
+  searchStore,
+  validatePayload,
+} from "./engine.js";
+import type {
+  BusinessLogicStore,
+  FieldDef,
+  EntityDef,
+  Transition,
+  StateMachine,
+  AffectedSystem,
+  CrossSystemEffect,
+  MicroflowDef,
+  MicroflowInput,
+  MicroflowOutput,
+  DecisionTable,
+  DecisionTableConditionValue,
+  DecisionTableRow,
+  UIWorkflow,
+  UIStep,
+  UIAction,
+  UIField,
+  PermissionDef,
+  AuditLogEntry,
+  Ruleset,
+  RulesetRule,
+  ExecutionLogEntry,
+  ShadowTest,
+  RuleTemplate,
+  RuleTemplateParam,
+  SemanticMapping,
+} from "./types.js";
 
 // =============================================================================
 // BUSINESS LOGIC STORE
 // Edit this JSON to define your domain's rules, entities, and constraints.
+// External stores (JSON/YAML via BUSINESS_LOGIC_DIR / BUSINESS_LOGIC_FILE) are
+// merged on top at startup — see src/store.ts. `STORE` is the merged view that
+// every entity-facing tool reads; the raw `BUSINESS_LOGIC` below is the
+// built-in demo store.
 // =============================================================================
 
 const BUSINESS_LOGIC: BusinessLogicStore = {
@@ -1090,221 +1133,14 @@ const SEMANTIC_MAPPINGS: SemanticMapping[] = [
 // TYPE DEFINITIONS
 // =============================================================================
 
-interface FieldDef {
-  type: string;
-  values?: string[];
-  notes?: string;
-  deprecated?: boolean;
-  replacement?: string;
-}
+// =============================================================================
+// MERGED STORE (built-in + external JSON/YAML from BUSINESS_LOGIC_DIR)
+// =============================================================================
 
-interface EntityDef {
-  description: string;
-  fields: Record<string, FieldDef>;
-  rules: string[];
-  side_effects: string[];
-  known_footguns: string[];
-}
-
-interface Transition {
-  from: string;
-  to: string;
-  condition: string;
-  side_effects: string[];
-}
-
-interface StateMachine {
-  initial: string;
-  transitions: Transition[];
-}
-
-interface AffectedSystem {
-  system: string;
-  action: string;
-}
-
-interface CrossSystemEffect {
-  description: string;
-  affected_systems: AffectedSystem[];
-  do_not: string;
-}
-
-interface BusinessLogicStore {
-  meta: {
-    project: string;
-    version: string;
-    last_updated: string;
-    owner: string;
-  };
-  entities: Record<string, EntityDef>;
-  state_machines: Record<string, StateMachine>;
-  cross_system_effects: Record<string, CrossSystemEffect>;
-  global_footguns: string[];
-}
-
-// --- Feature 1: Dynamic Tool Registry ---
-interface MicroflowInput {
-  name: string;
-  type: string;
-  required: boolean;
-  description: string;
-}
-
-interface MicroflowOutput {
-  name: string;
-  type: string;
-  description: string;
-}
-
-interface MicroflowDef {
-  name: string;
-  description: string;
-  inputs: MicroflowInput[];
-  outputs: MicroflowOutput[];
-  steps: string[];
-  tags: string[];
-  owner?: string;
-  async: boolean;
-}
-
-// --- Feature 2: Decision Tables (DMN) ---
-interface DecisionTableConditionValue {
-  op: ">=" | "<=" | ">" | "<" | "!=";
-  value: unknown;
-}
-
-interface DecisionTableRow {
-  id: string;
-  conditions: Record<string, string | number | boolean | null | DecisionTableConditionValue>;
-  outputs: Record<string, unknown>;
-  priority?: number;
-  annotation?: string;
-}
-
-interface DecisionTable {
-  id: string;
-  description: string;
-  hitPolicy: "UNIQUE" | "FIRST" | "COLLECT" | "RULE_ORDER";
-  inputs: { name: string; type: string; description: string }[];
-  outputs: { name: string; type: string; description: string }[];
-  rows: DecisionTableRow[];
-}
-
-// --- Feature 3: UI Workflows ---
-interface UIAction {
-  label: string;
-  next: string;
-  condition?: string;
-  validation_rules: string[];
-}
-
-interface UIField {
-  name: string;
-  type: string;
-  required: boolean;
-  label: string;
-}
-
-interface UIStep {
-  id: string;
-  label: string;
-  description: string;
-  fields: UIField[];
-  actions: UIAction[];
-}
-
-interface UIWorkflow {
-  id: string;
-  description: string;
-  initial: string;
-  terminal_steps: string[];
-  steps: Record<string, UIStep>;
-}
-
-// --- Feature 5: Governance & Security ---
-interface PermissionDef {
-  entity: string;
-  allowed_actions: string[];
-  conditions?: string;
-  denied_actions: string[];
-}
-
-interface AuditLogEntry {
-  id: string;
-  timestamp: string;
-  actor_id: string;
-  role: string;
-  action: string;
-  entity: string;
-  entity_id: string;
-  details: string;
-}
-
-// --- Feature 6: Logic Reuse (Rulesets) ---
-interface RulesetRule {
-  id: string;
-  condition: string;
-  action: string;
-  priority: number;
-}
-
-interface Ruleset {
-  id: string;
-  description: string;
-  version: string;
-  rules: RulesetRule[];
-  reuse_in: string[];
-  tags: string[];
-}
-
-// --- Feature 7: Production Debugging ---
-interface ExecutionLogEntry {
-  id: string;
-  timestamp: string;
-  tool: string;
-  inputs: Record<string, unknown>;
-  output_summary: string;
-  duration_ms: number;
-  shadow: boolean;
-}
-
-interface ShadowTest {
-  id: string;
-  description: string;
-  baseline_tool: string;
-  candidate_tool: string;
-  enabled: boolean;
-  created_at: string;
-}
-
-// --- Feature 9: Hybrid Authoring (Rule Templates) ---
-interface RuleTemplateParam {
-  name: string;
-  type: string;
-  description: string;
-  example: string;
-}
-
-interface RuleTemplate {
-  id: string;
-  name: string;
-  category: string;
-  description: string;
-  parameters: RuleTemplateParam[];
-  template_rule: string;
-  example_output: string;
-}
-
-// --- Feature 10: Semantic Interoperability ---
-interface SemanticMapping {
-  operational_term: string;
-  analytical_term: string;
-  description: string;
-  entity?: string;
-  field?: string;
-  transformation?: string;
-  examples?: string[];
-}
+const loaded = loadStores(BUSINESS_LOGIC);
+export const STORE: BusinessLogicStore = loaded.store;
+export const LOADED_SOURCES: string[] = loaded.sources;
+export const LOAD_ERRORS: string[] = loaded.errors;
 
 // =============================================================================
 // MCP SERVER
@@ -1312,7 +1148,7 @@ interface SemanticMapping {
 
 const server = new Server({
   name: "business-logic-mcp",
-  version: "1.0.0",
+  version: "1.1.0",
 }, {
   capabilities: {
     tools: {},
@@ -1717,20 +1553,136 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["operational_term"],
       },
     },
+    // =========================================================================
+    // FEATURE 11: Deterministic validation, contracts & codegen (no LLM)
+    // =========================================================================
+    {
+      name: "list_loaded_stores",
+      description:
+        "Reports which business-logic stores are loaded: the built-in demo store plus every external JSON/YAML file merged from BUSINESS_LOGIC_DIR (or BUSINESS_LOGIC_FILE). Includes source paths and any load errors. Call this first to confirm which project's rules this server is serving.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "list_state_machines",
+      description:
+        "Lists all state machines (entity.status fields) in the merged store with their initial state and available transitions. Call this to discover what stateful fields exist before generating state-transition code.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "validate_transition",
+      description:
+        "Deterministically checks whether a state transition is legal for a given entity_field (e.g. 'Order.status'). Returns the matching transition with its condition and side effects, or the list of allowed targets when the requested transition is illegal. Call this before generating code that changes an entity's status.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          entity_field: {
+            type: "string",
+            description: "The entity + field in dot notation, e.g. 'Order.status'.",
+          },
+          from: { type: "string", description: "Current state." },
+          to: { type: "string", description: "Target state." },
+        },
+        required: ["entity_field", "from", "to"],
+      },
+    },
+    {
+      name: "validate_payload",
+      description:
+        "Deterministically validates a payload object against an entity's declared field types: required fields, enum membership, integer/boolean/string types, deprecated-field writes, and the float-for-money footgun. Call this before generating code that writes an entity so field violations surface before the API rejects them.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          entity: { type: "string", description: "Entity name, e.g. 'Order'." },
+          payload: {
+            type: "object",
+            description: "The object to validate against the entity's fields.",
+          },
+        },
+        required: ["entity", "payload"],
+      },
+    },
+    {
+      name: "get_entity_schema",
+      description:
+        "Returns a JSON Schema (draft-07) for an entity's fields, including enums, nullability, and deprecation markers. Use this to generate matching validation code or forms without asking for the field semantics separately.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          entity: { type: "string", description: "Entity name, e.g. 'Order'." },
+        },
+        required: ["entity"],
+      },
+    },
+    {
+      name: "get_entity_contract",
+      description:
+        "One-call combined contract for an entity: fields, rules, side effects, footguns, its state machine(s), and cross-system effects. Use this when scaffolding a full CRUD/feature for the entity so the model has everything in a single response.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          entity: { type: "string", description: "Entity name, e.g. 'Order'." },
+        },
+        required: ["entity"],
+      },
+    },
+    {
+      name: "check_plan_footguns",
+      description:
+        "Scans a free-text plan or code snippet against the merged store's known footguns (entity-scoped and global) and returns keyword matches, ranked. This is an honest heuristic — matches must be verified manually, it never issues a verdict.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          plan: { type: "string", description: "The plan or code to scan." },
+          entity: {
+            type: "string",
+            description: "Optional entity to scope the scan to; omit to scan all footguns.",
+          },
+        },
+        required: ["plan"],
+      },
+    },
+    {
+      name: "search_logic",
+      description:
+        "Substring search across the merged store: entities, fields, rules, state machines, cross-system effects, and global footguns. Call this when you are unsure which entity/rule covers a concept.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Text to search for." },
+          limit: { type: "number", description: "Max hits (default 40)." },
+        },
+        required: ["query"],
+      },
+    },
+    {
+      name: "generate_transition_guard",
+      description:
+        "Generates a deterministic TypeScript runtime guard (allowed-transition table, canTransition, assertTransition) from a state machine. This is real codegen — the guard enforces the store's transitions at runtime. Call this before implementing state changes by hand.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          entity_field: {
+            type: "string",
+            description: "The entity + field in dot notation, e.g. 'Order.status'.",
+          },
+        },
+        required: ["entity_field"],
+      },
+    },
   ],
 }));
 
 // --- Handle Tool Calls ---
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: rawArgs } = request.params;
-  const args = (rawArgs ?? {}) as Record<string, unknown>;
-
+export async function callTool(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ content: { type: string; text: string }[]; isError?: boolean }> {
   switch (name) {
     // -------------------------------------------------------------------------
     case "list_entities": {
       const t0 = Date.now();
-      const result = Object.entries(BUSINESS_LOGIC.entities).map(([entity, def]) => ({
+      const result = Object.entries(STORE.entities).map(([entity, def]) => ({
         entity,
         description: def.description,
         fields: Object.keys(def.fields),
@@ -1746,9 +1698,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!entity) {
         return { content: [{ type: "text", text: "Missing required argument: 'entity'." }], isError: true };
       }
-      const def = BUSINESS_LOGIC.entities[entity];
+      const def = STORE.entities[entity];
       if (!def) {
-        const available = Object.keys(BUSINESS_LOGIC.entities).join(", ");
+        const available = Object.keys(STORE.entities).join(", ");
         return {
           content: [{ type: "text", text: `Entity '${entity}' not found. Available: ${available}` }],
           isError: true,
@@ -1766,9 +1718,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: "Missing required argument: 'entity_field'." }], isError: true };
       }
       const current_state = args.current_state as string | undefined;
-      const sm = BUSINESS_LOGIC.state_machines[entity_field];
+      const sm = STORE.state_machines[entity_field];
       if (!sm) {
-        const available = Object.keys(BUSINESS_LOGIC.state_machines).join(", ");
+        const available = Object.keys(STORE.state_machines).join(", ");
         return {
           content: [{ type: "text", text: `State machine '${entity_field}' not found. Available: ${available}` }],
           isError: true,
@@ -1796,7 +1748,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!entity || !field) {
         return { content: [{ type: "text", text: "Missing required arguments: 'entity' and 'field'." }], isError: true };
       }
-      const def = BUSINESS_LOGIC.entities[entity];
+      const def = STORE.entities[entity];
       if (!def) {
         return { content: [{ type: "text", text: `Entity '${entity}' not found.` }], isError: true };
       }
@@ -1822,7 +1774,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // -------------------------------------------------------------------------
     case "list_operations": {
       const t0 = Date.now();
-      const ops = Object.entries(BUSINESS_LOGIC.cross_system_effects).map(([key, val]) => ({
+      const ops = Object.entries(STORE.cross_system_effects).map(([key, val]) => ({
         operation: key,
         description: val.description,
       }));
@@ -1837,9 +1789,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!operation) {
         return { content: [{ type: "text", text: "Missing required argument: 'operation'." }], isError: true };
       }
-      const effect = BUSINESS_LOGIC.cross_system_effects[operation];
+      const effect = STORE.cross_system_effects[operation];
       if (!effect) {
-        const available = Object.keys(BUSINESS_LOGIC.cross_system_effects).join(", ");
+        const available = Object.keys(STORE.cross_system_effects).join(", ");
         return {
           content: [
             {
@@ -1861,7 +1813,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const t0 = Date.now();
       const entity = args.entity as string | undefined;
       if (entity) {
-        const def = BUSINESS_LOGIC.entities[entity];
+        const def = STORE.entities[entity];
         if (!def) {
           return { content: [{ type: "text", text: `Entity '${entity}' not found.` }], isError: true };
         }
@@ -1874,7 +1826,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 {
                   entity,
                   entity_footguns: def.known_footguns,
-                  global_footguns: BUSINESS_LOGIC.global_footguns,
+                  global_footguns: STORE.global_footguns,
                 },
                 null,
                 2
@@ -1888,7 +1840,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ global_footguns: BUSINESS_LOGIC.global_footguns }, null, 2),
+            text: JSON.stringify({ global_footguns: STORE.global_footguns }, null, 2),
           },
         ],
       };
@@ -2071,7 +2023,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!entity || !operation) {
         return { content: [{ type: "text", text: "Missing required arguments: 'entity' and 'operation'." }], isError: true };
       }
-      const entityDef = BUSINESS_LOGIC.entities[entity];
+      const entityDef = STORE.entities[entity];
       const guidance = {
         entity,
         operation,
@@ -2085,7 +2037,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           async_pattern: "Batch jobs are async by design. Expose a /jobs/:id status endpoint — never block the caller.",
         },
         entity_specific_notes: entityDef ? entityDef.side_effects : [],
-        known_footguns: entityDef ? entityDef.known_footguns : BUSINESS_LOGIC.global_footguns,
+        known_footguns: entityDef ? entityDef.known_footguns : STORE.global_footguns,
         global_footguns_relevant: [
           "Background jobs are idempotent by design. Do not add logic that assumes a job runs exactly once.",
           "The event bus (Kafka) delivers at-least-once. Consumers must be idempotent.",
@@ -2333,16 +2285,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "Re-export when rules change — the exported_at timestamp identifies the version.",
         ],
         entities: scopeEntity
-          ? { [scopeEntity]: BUSINESS_LOGIC.entities[scopeEntity] ?? null }
-          : BUSINESS_LOGIC.entities,
+          ? { [scopeEntity]: STORE.entities[scopeEntity] ?? null }
+          : STORE.entities,
         state_machines: scopeEntity
           ? Object.fromEntries(
-              Object.entries(BUSINESS_LOGIC.state_machines).filter(([k]) =>
+              Object.entries(STORE.state_machines).filter(([k]) =>
                 k.startsWith((scopeEntity ?? "") + "."),
               ),
             )
-          : BUSINESS_LOGIC.state_machines,
-        global_footguns: BUSINESS_LOGIC.global_footguns,
+          : STORE.state_machines,
+        global_footguns: STORE.global_footguns,
       };
       if (includeDecisionTables) {
         bundle.decision_tables = scopeEntity
@@ -2515,9 +2467,143 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     // -------------------------------------------------------------------------
+    // FEATURE 11: Deterministic validation, contracts & codegen (no LLM)
+    // =========================================================================
+    case "list_loaded_stores": {
+      const t0 = Date.now();
+      const result = {
+        project: STORE.meta.project,
+        version: STORE.meta.version,
+        builtin_entities: Object.keys(BUSINESS_LOGIC.entities).length,
+        merged_entities: Object.keys(STORE.entities).length,
+        state_machines: Object.keys(STORE.state_machines).length,
+        sources: LOADED_SOURCES,
+        errors: LOAD_ERRORS,
+      };
+      logExecution("list_loaded_stores", args, `${result.sources.length} sources`, Date.now() - t0);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+
+    case "list_state_machines": {
+      const t0 = Date.now();
+      const result = Object.entries(STORE.state_machines).map(([key, sm]) => ({
+        entity_field: key,
+        initial: sm.initial,
+        states: [...new Set(sm.transitions.flatMap((t) => [t.from, t.to]))].sort(),
+        transition_count: sm.transitions.length,
+      }));
+      logExecution("list_state_machines", args, `${result.length} machines`, Date.now() - t0);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+
+    case "validate_transition": {
+      const t0 = Date.now();
+      const entityField = args.entity_field as string | undefined;
+      const from = args.from as string | undefined;
+      const to = args.to as string | undefined;
+      if (!entityField || !from || !to) {
+        return { content: [{ type: "text", text: "Missing required arguments: 'entity_field', 'from', 'to'." }], isError: true };
+      }
+      const result = findTransition(STORE, entityField, from, to);
+      logExecution("validate_transition", args, result.valid ? "legal" : "illegal", Date.now() - t0);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+
+    case "validate_payload": {
+      const t0 = Date.now();
+      const entity = args.entity as string | undefined;
+      const payload = (args.payload ?? {}) as Record<string, unknown>;
+      if (!entity) {
+        return { content: [{ type: "text", text: "Missing required argument: 'entity'." }], isError: true };
+      }
+      const result = validatePayload(STORE, entity, payload);
+      logExecution("validate_payload", args, result.valid ? "valid" : `${result.errors.length} errors`, Date.now() - t0);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+
+    case "get_entity_schema": {
+      const t0 = Date.now();
+      const entity = args.entity as string | undefined;
+      if (!entity) {
+        return { content: [{ type: "text", text: "Missing required argument: 'entity'." }], isError: true };
+      }
+      const result = schemaForEntity(STORE, entity);
+      if (!result.found) {
+        const available = Object.keys(STORE.entities).join(", ");
+        return {
+          content: [{ type: "text", text: `Entity '${entity}' not found. Available: ${available}` }],
+          isError: true,
+        };
+      }
+      logExecution("get_entity_schema", args, entity, Date.now() - t0);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+
+    case "get_entity_contract": {
+      const t0 = Date.now();
+      const entity = args.entity as string | undefined;
+      if (!entity) {
+        return { content: [{ type: "text", text: "Missing required argument: 'entity'." }], isError: true };
+      }
+      const contract = entityContract(STORE, entity);
+      if (!contract.found) {
+        const available = Object.keys(STORE.entities).join(", ");
+        return {
+          content: [{ type: "text", text: `Entity '${entity}' not found. Available: ${available}` }],
+          isError: true,
+        };
+      }
+      logExecution("get_entity_contract", args, entity, Date.now() - t0);
+      return { content: [{ type: "text", text: JSON.stringify(contract, null, 2) }] };
+    }
+
+    case "check_plan_footguns": {
+      const t0 = Date.now();
+      const plan = args.plan as string | undefined;
+      const entity = args.entity as string | undefined;
+      if (!plan) {
+        return { content: [{ type: "text", text: "Missing required argument: 'plan'." }], isError: true };
+      }
+      const result = checkPlanFootguns(STORE, plan, entity);
+      logExecution("check_plan_footguns", args, `${result.matched.length} matches`, Date.now() - t0);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+
+    case "search_logic": {
+      const t0 = Date.now();
+      const query = args.query as string | undefined;
+      if (!query) {
+        return { content: [{ type: "text", text: "Missing required argument: 'query'." }], isError: true };
+      }
+      const limit = Number(args.limit ?? 40);
+      const result = searchStore(STORE, query, limit);
+      logExecution("search_logic", args, `${result.count} hits`, Date.now() - t0);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+
+    case "generate_transition_guard": {
+      const t0 = Date.now();
+      const entityField = args.entity_field as string | undefined;
+      if (!entityField) {
+        return { content: [{ type: "text", text: "Missing required argument: 'entity_field'." }], isError: true };
+      }
+      const result = generateTransitionGuard(STORE, entityField);
+      if (!result.ok) {
+        return { content: [{ type: "text", text: result.note ?? "failed" }], isError: true };
+      }
+      logExecution("generate_transition_guard", args, entityField, Date.now() - t0);
+      return { content: [{ type: "text", text: result.code ?? "" }] };
+    }
+
+    // -------------------------------------------------------------------------
     default:
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
+}
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: rawArgs } = request.params;
+  return callTool(name, (rawArgs ?? {}) as Record<string, unknown>);
 });
 
 // =============================================================================
@@ -2528,11 +2614,22 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
-    `Business Logic MCP running — project: ${BUSINESS_LOGIC.meta.project} v${BUSINESS_LOGIC.meta.version}`
+    `Business Logic MCP running — project: ${STORE.meta.project} v${STORE.meta.version}` +
+      (LOADED_SOURCES.length > 0 ? ` (loaded ${LOADED_SOURCES.length} external store file(s))` : "") +
+      (LOAD_ERRORS.length > 0 ? ` — ${LOAD_ERRORS.length} store load error(s)` : "")
   );
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+// Only connect to stdio when run as the entrypoint. Importing this module from
+// tests or an embedding host must not start a transport.
+const isEntrypoint =
+  typeof process !== "undefined" &&
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isEntrypoint) {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.exit(1);
+  });
+}
