@@ -1,0 +1,52 @@
+{
+  "records": [
+    {
+      "fingerprint": "dependencies|outdated-minor|package.json|62317220c27c2246",
+      "source": "deps_freshness",
+      "category": "outdated-minor",
+      "dimension": "dependencies",
+      "severity": "low",
+      "file": "package.json",
+      "status": "open",
+      "firstSeen": "2026-10-07T21:57:39.799Z",
+      "lastSeen": "2026-10-07T21:57:39.799Z",
+      "seenCount": 1
+    },
+    {
+      "fingerprint": "dependencies|outdated-major|package.json|5ffd984b27de5643",
+      "source": "deps_freshness",
+      "category": "outdated-major",
+      "dimension": "dependencies",
+      "severity": "medium",
+      "file": "package.json",
+      "status": "open",
+      "firstSeen": "2026-10-07T21:57:39.799Z",
+      "lastSeen": "2026-10-07T21:57:39.799Z",
+      "seenCount": 1
+    },
+    {
+      "fingerprint": "dependencies|outdated-major|package.json|b17dfa30592ef886",
+      "source": "deps_freshness",
+      "category": "outdated-major",
+      "dimension": "dependencies",
+      "severity": "medium",
+      "file": "package.json",
+      "status": "open",
+      "firstSeen": "2026-10-07T21:57:39.799Z",
+      "lastSeen": "2026-10-07T21:57:39.799Z",
+      "seenCount": 1
+    },
+    {
+      "fingerprint": "dependencies|outdated-major|package.json|524bab68df8a20c2",
+      "source": "deps_freshness",
+      "category": "outdated-major",
+      "dimension": "dependencies",
+      "severity": "medium",
+      "file": "package.json",
+      "status": "open",
+      "firstSeen": "2026-10-07T21:57:39.799Z",
+      "lastSeen": "2026-10-07T21:57:39.799Z",
+      "seenCount": 1
+    }
+  ]
+}
