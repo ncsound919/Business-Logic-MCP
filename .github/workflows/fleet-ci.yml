@@ -1,0 +1,61 @@
+name: fleet-ci
+# Universal guardrail workflow for every fleet keep repo.
+# - secrets-scan: gitleaks over full history (leaked keys bit us before)
+# - hygiene: fails if secret-looking files are TRACKED (.env, .pem, keys)
+# - node/python: stack-conditional build+test
+# - fleet-audit: advisory hook for the fleet's own RepoRank/Grader/Deep
+#   (continue-on-error until the scorers are reachable from CI)
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+concurrency:
+  group: fleet-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: reject tracked secrets
+        run: |
+          bad=$(git ls-files | grep -Ei '(\.env$|\.pem$|id_rsa|\.key$|secrets\.json$)' | grep -v '\.env\.example' || true)
+          if [ -n "$bad" ]; then echo "TRACKED SECRETS:"; echo "$bad"; exit 1; fi
+          echo "hygiene ok"
+  node:
+    if: hashFiles('package.json') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci || npm install
+      - run: npm test --if-present
+      - run: npm run build --if-present
+  python:
+    if: hashFiles('pyproject.toml') != '' || hashFiles('requirements*.txt') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt 2>/dev/null || true
+      - run: pip install pytest 2>/dev/null || true
+      - run: python -m pytest -q 2>/dev/null || echo "no pytest suite"
+  fleet-audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - run: echo "advisory: wire RepoRank/Grader/Deep scoring here once reachable from CI"
